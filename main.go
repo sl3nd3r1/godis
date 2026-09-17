@@ -7,6 +7,13 @@ import (
 	"strings"
 )
 
+func eb(s string, ok bool) string {
+	if !ok { return "$-1\r\n" }
+	return fmt.Sprintf("$%d\r\n%s\r\n", len(s), s)
+}
+func es(s string) string { return fmt.Sprintf("+%s\r\n", s) }
+func ee(m string) string { return fmt.Sprintf("-%s\r\n", m) }
+
 func handleCommand(args []string) string {
 	cmd := strings.ToUpper(args[0])
 
@@ -19,6 +26,10 @@ func handleCommand(args []string) string {
 		// TODO: Return bulk string for PING <message>
 		if len(args) == 2 {
 			return encodeBulkString(args[1])
+		}
+	case "ECHO":
+		if len(args) == 2 {
+			return eb(args[1], true)
 		}
 	}
 
