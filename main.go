@@ -31,9 +31,17 @@ func handleCommand(args []string) string {
 		if len(args) == 2 {
 			return eb(args[1], true)
 		}
+	case "COMMAND":
+		if len(args) == 2 && args[1] == "DOCS" {
+			return es("OK")
+		}
+		// if es(args[1]) == "DOCS"{
+		// 	return es("OK")
+		// }
+			
 	}
 
-	return fmt.Sprintf("-ERR unknown command '%s'\r\n", cmd)
+	return ee("ERR unknown command '" + args[0] + "'")
 }
 
 func encodeBulkString(s string) string {
