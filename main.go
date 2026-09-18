@@ -3,7 +3,9 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -11,6 +13,8 @@ type artiryRange struct {
 	min int
 	max int
 }
+
+var store = map[string]string{}
 
 var commandRanges = map[string]artiryRange{
 	"PING":    {min: 1, max: 2},
@@ -67,9 +71,18 @@ func handleCommand(args []string) string {
 		if err := checkArity(cmd, args); err != nil {
 			return ee(err.Error())
 		}
-		// if es(args[1]) == "DOCS"{
-		// 	return es("OK")
-		// }
+	case "SET":
+		if err := checkArity(cmd, args); err != nil {
+			return ee(err.Error())
+		}
+		store[args[1]] = args[2]
+		return es("OK")
+	case "GET":
+		if err := checkArity(cmd, args); err != nil {
+			return ee(err.Error())
+		}
+		value, ok := store[args[1]]
+		return eb(value, ok)	
 			
 	}
 
@@ -81,39 +94,80 @@ func encodeBulkString(s string) string {
 }
 
 func main() {
-	scanner := bufio.NewScanner(os.Stdin)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
+	r := bufio.NewReader(os.Stdin)
+	w := bufio.NewWriter(os.Stdout)
+	defer w.Flush()
+	for {
+		args, err := parseArgs(r)
+		if err != nil {
+			return
 		}
-		args := parseArgs(line)
-		response := handleCommand(args)
-		fmt.Print(response)
+		w.WriteString(handleCommand(args))
+		w.Flush()
 	}
 }
 
-func parseArgs(line string) []string {
-	var args []string
-	var current strings.Builder
-	inQuotes := false
-	for _, ch := range line {
-		switch {
-		case ch == '"' && !inQuotes:
-			inQuotes = true
-		case ch == '"' && inQuotes:
-			inQuotes = false
-		case ch == ' ' && !inQuotes:
-			if current.Len() > 0 {
-				args = append(args, current.String())
-				current.Reset()
-			}
-		default:
-			current.WriteRune(ch)
+
+// parseRequest reads one RESP array from r and returns its arg list.
+func parseArgs(r *bufio.Reader) ([]string, error) {
+	// Read the *N\r\n line
+	line, err := r.ReadString('\n')
+	if err != nil {
+		return nil, err
+	}
+	if !strings.HasPrefix(line, "*") {
+		return nil, fmt.Errorf("expected '*', got %q", line)
+	}
+	// TODO: 1. Parse N from line[1:] (trim \r\n)
+	n, err := strconv.Atoi(strings.TrimSpace(line[1:]))
+	if err != nil {
+		return nil, fmt.Errorf("invalid array length: %q", line)
+	}
+	args := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		line, err = r.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+		strLen, err := strconv.Atoi(strings.TrimSpace(line[1:]))
+		if err != nil {
+			return nil, fmt.Errorf("invalid bulk string length: %q", line)
+		}
+		buf := make([]byte, strLen)
+		_, err = io.ReadFull(r, buf)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, string(buf))
+		// Read the trailing \r\n after the bulk string
+		// Option1: Use ReadString to read until '\n' and discard the trailing \r\n
+		// _, err = r.ReadString('\n')
+		// if err != nil {
+		// 	return nil, err
+		// }
+		// Option2: Use Discard to skip the next 2 bytes (\r\n)
+		// _, err =r.Discard(2)
+		// if err != nil {
+		// 	return nil, err
+		// }
+		// Option3: Use io.ReadFull to read exactly 2 bytes and check if they are \r\n
+		var crlf [2]byte
+		_, err = io.ReadFull(r, crlf[:])
+		if err != nil {
+			return nil, err
+		}
+		if crlf[0] != '\r' || crlf[1] != '\n'{
+			return nil, fmt.Errorf("expected CRLF after bulk string, got %q", crlf)
 		}
 	}
-	if current.Len() > 0 {
-		args = append(args, current.String())
-	}
-	return args
+
+	//=========================DONE=============================
+	// TODO: 2. Loop N times: read $len\r\n, then read exactly len bytes + trailing \r\n
+	// TODO: 3. Use io.ReadFull(r, buf) — DO NOT use ReadString once you know the byte length,
+	//          because bulk bodies may contain \r\n.
+	// TODO: 4. Return the assembled []string
+	//=========================DONE=============================
+	_ = strconv.Atoi
+	_ = io.ReadFull
+	return args, nil
 }
