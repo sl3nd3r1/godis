@@ -7,6 +7,29 @@ import (
 	"strings"
 )
 
+type artiryRange struct {
+	min int
+	max int
+}
+
+var commandRanges = map[string]artiryRange{
+	"PING":    {min: 1, max: 2},
+	"ECHO":    {min: 2, max: 2},
+	"COMMAND": {min: 1, max: 2},
+}
+
+func checkArity(cmd string, args []string) error {
+	limits, exists := commandRanges[strings.ToUpper(cmd)]
+	if !exists {
+		return nil
+	}
+	argCount := len(args)
+	if argCount < limits.min || argCount > limits.max {
+		return fmt.Errorf("ERR wrong number of arguments for '%s' command", cmd)
+	}
+	return nil
+}
+
 func eb(s string, ok bool) string {
 	if !ok { return "$-1\r\n" }
 	return fmt.Sprintf("$%d\r\n%s\r\n", len(s), s)
@@ -27,13 +50,22 @@ func handleCommand(args []string) string {
 		if len(args) == 2 {
 			return encodeBulkString(args[1])
 		}
+		if err := checkArity(cmd, args); err != nil {
+			return ee(err.Error())
+		}
 	case "ECHO":
 		if len(args) == 2 {
 			return eb(args[1], true)
 		}
+		if err := checkArity(cmd, args); err != nil {
+			return ee(err.Error())
+		}
 	case "COMMAND":
-		if len(args) == 2 && args[1] == "DOCS" {
+		if len(args) > 1 && strings.ToUpper(args[1]) == "DOCS" {
 			return es("OK")
+		}
+		if err := checkArity(cmd, args); err != nil {
+			return ee(err.Error())
 		}
 		// if es(args[1]) == "DOCS"{
 		// 	return es("OK")
